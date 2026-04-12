@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "writing-agent"
+version = "0.1.0"
+description = "Chinese mixed-media writing agent for Xiaohongshu and WeChat articles."
+requires-python = ">=3.10"
+dependencies = [
+  "deepagents",
+  "fastapi",
+  "langchain",
+  "langchain-openai",
+  "langgraph",
+  "langsmith",
+  "pydantic",
+  "python-dotenv",
+  "typing-extensions",
+  "uvicorn",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx",
+  "pytest",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
