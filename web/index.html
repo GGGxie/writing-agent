@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>中文图文写作 Agent</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f172a;
+        --panel: rgba(15, 23, 42, 0.84);
+        --panel-soft: rgba(30, 41, 59, 0.9);
+        --border: rgba(148, 163, 184, 0.22);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #a855f7;
+        --accent-soft: rgba(168, 85, 247, 0.18);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(168, 85, 247, 0.18), transparent 30%),
+          radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.18), transparent 28%),
+          var(--bg);
+        color: var(--text);
+      }
+
+      .shell {
+        width: min(1240px, calc(100vw - 32px));
+        margin: 24px auto 48px;
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 20px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        backdrop-filter: blur(18px);
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+      }
+
+      .left {
+        padding: 20px;
+        position: sticky;
+        top: 24px;
+        height: fit-content;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+
+      .hint {
+        margin: 0 0 20px;
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 14px;
+      }
+
+      label {
+        display: block;
+        margin: 14px 0 8px;
+        font-size: 14px;
+        color: #cbd5e1;
+      }
+
+      input, textarea, button {
+        width: 100%;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: var(--panel-soft);
+        color: var(--text);
+        padding: 12px 14px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+
+      button {
+        margin-top: 16px;
+        cursor: pointer;
+        background: linear-gradient(135deg, #7c3aed, #2563eb);
+        border: none;
+        font-weight: 600;
+      }
+
+      .secondary {
+        background: transparent;
+        border: 1px solid var(--border);
+      }
+
+      .right {
+        padding: 20px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+
+      .badge {
+        display: inline-flex;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        color: #d8b4fe;
+        background: var(--accent-soft);
+        border: 1px solid rgba(216, 180, 254, 0.18);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 16px;
+      }
+
+      .draft {
+        padding: 18px;
+        border-radius: 22px;
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid var(--border);
+      }
+
+      .draft h2 {
+        margin: 4px 0 8px;
+        font-size: 20px;
+      }
+
+      .draft p.meta {
+        margin: 0 0 14px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .block {
+        margin-bottom: 14px;
+        padding: 14px;
+        background: rgba(30, 41, 59, 0.68);
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
+      .block.cover img,
+      .block.image img {
+        width: 100%;
+        display: block;
+        border-radius: 16px;
+      }
+
+      .block.cover {
+        padding: 10px;
+      }
+
+      .block.heading {
+        font-weight: 700;
+        color: #f8fafc;
+      }
+
+      .block.summary,
+      .block.quote,
+      .block.tips {
+        color: #cbd5e1;
+      }
+
+      details {
+        margin-top: 12px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: #c4b5fd;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(15, 23, 42, 0.92);
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: 1fr; }
+        .left { position: static; }
+        .columns { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="panel left">
+        <h1>中文图文写作 Agent</h1>
+        <p class="hint">更贴合真实使用习惯的流程是：先粘贴链接，让系统总结视频或文章内容；确认摘要没问题后，再生成小红书和公众号图文稿。</p>
+        <label for="topic">主题</label>
+        <input id="topic" value="AI 写作 Agent 如何做出图文感" />
+        <label for="audience">受众</label>
+        <input id="audience" value="希望做内容运营的创作者" />
+        <label for="tone">语气</label>
+        <input id="tone" value="专业、克制、但不无聊" />
+        <label for="goal">目标</label>
+        <input id="goal" value="同时生成小红书和公众号版本" />
+        <label for="materials">素材 / 信息源</label>
+        <textarea id="materials">https://mp.weixin.qq.com/s/example-article
+https://www.youtube.com/watch?v=example
+希望内容不只是大段文字，而是读起来舒服，有封面和段间配图。</textarea>
+        <label for="feedback">修订反馈（可选）</label>
+        <textarea id="feedback" placeholder="例如：请把语气再克制一点，公众号部分加重事实感。"></textarea>
+        <button id="summarizeButton" class="secondary">先总结来源</button>
+        <button id="generateButton">根据摘要生成图文草稿</button>
+        <button id="reviseButton" class="secondary">带反馈重新生成</button>
+      </section>
+
+      <section class="panel right">
+        <div class="toolbar">
+          <span class="badge" id="status">等待生成</span>
+        </div>
+        <div id="research"></div>
+        <div class="grid" id="drafts"></div>
+      </section>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const researchEl = document.getElementById("research");
+      const draftsEl = document.getElementById("drafts");
+
+      function renderSourceItems(items) {
+        return `
+          <div class="draft">
+            <h2>来源摘要</h2>
+            ${(items || []).map((item) => `
+              <div class="block summary">
+                <strong>${item.title}</strong>
+                <p>${item.summary}</p>
+                ${item.content_excerpt ? `<div class="hint">${item.content_excerpt}</div>` : ""}
+                <div class="hint">${item.source_kind} · ${item.platform}${item.url ? ` · ${item.url}` : ""}</div>
+              </div>`).join("")}
+          </div>
+        `;
+      }
+
+      function requestPayload() {
+        const materialLines = document.getElementById("materials").value
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        function classifyInputKind(content) {
+          const value = content.toLowerCase();
+          if (!value.startsWith("http://") && !value.startsWith("https://")) {
+            return "text";
+          }
+          if (
+            value.includes("youtube.com") ||
+            value.includes("youtu.be") ||
+            value.includes("bilibili.com") ||
+            value.includes("douyin.com") ||
+            value.includes("vimeo.com")
+          ) {
+            return "video";
+          }
+          return "article";
+        }
+
+        return {
+          topic: document.getElementById("topic").value.trim(),
+          audience: document.getElementById("audience").value.trim(),
+          tone: document.getElementById("tone").value.trim(),
+          goal: document.getElementById("goal").value.trim(),
+          materials: materialLines.map((content) => ({
+            kind: classifyInputKind(content),
+            content,
+            source: classifyInputKind(content) === "text" ? null : content,
+          })),
+        };
+      }
+
+      function blockTemplate(block) {
+        const typeClass = `block ${block.type}`;
+        if (block.type === "cover" || block.type === "image") {
+          return `
+            <div class="${typeClass}">
+              <img src="${block.image_url}" alt="${block.alt_text || ""}" />
+              ${block.caption ? `<div class="hint">${block.caption}</div>` : ""}
+            </div>
+          `;
+        }
+
+        return `
+          <div class="${typeClass}">
+            ${block.text ? `<div>${block.text}</div>` : ""}
+          </div>
+        `;
+      }
+
+      function renderResponse(data) {
+        researchEl.innerHTML = `
+          <div class="columns">
+            ${renderSourceItems(data.source_items || [])}
+            <div class="draft">
+              <h2>研究摘要</h2>
+              ${data.research_notes.map((note) => `
+                <div class="block summary">
+                  <strong>${note.title}</strong>
+                  <p>${note.summary}</p>
+                  <div class="hint">${(note.bullets || []).join(" · ")}</div>
+                </div>`).join("")}
+            </div>
+            <div class="draft">
+              <h2>配图计划</h2>
+              ${data.image_plan.map((item) => `
+                <div class="block tips">
+                  <strong>${item.purpose}</strong>
+                  <p>${item.placement_hint}</p>
+                  <div class="hint">${item.prompt}</div>
+                </div>`).join("")}
+            </div>
+          </div>
+        `;
+
+        draftsEl.innerHTML = data.drafts.map((draft) => `
+          <article class="draft">
+            <span class="badge">${draft.platform}</span>
+            <h2>${draft.title}</h2>
+            <p class="meta">${draft.summary}</p>
+            ${(draft.blocks || []).map(blockTemplate).join("")}
+            <details>
+              <summary>查看 Markdown 导出</summary>
+              <pre>${draft.markdown}</pre>
+            </details>
+            ${draft.quality ? `
+              <details>
+                <summary>查看质检结果（${draft.quality.score} 分）</summary>
+                <pre>${[...(draft.quality.findings || []), "", ...(draft.quality.suggestions || [])].join("\n")}</pre>
+              </details>` : ""}
+          </article>
+        `).join("");
+      }
+
+      function renderSourceSummaryOnly(data) {
+        researchEl.innerHTML = `
+          <div class="columns">
+            ${renderSourceItems(data.source_items || [])}
+          </div>
+        `;
+        draftsEl.innerHTML = "";
+      }
+
+      async function callApi(path, payload) {
+        statusEl.textContent = "生成中...";
+        draftsEl.innerHTML = "";
+        researchEl.innerHTML = "";
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "请求失败");
+        }
+        const data = await response.json();
+        renderResponse(data);
+        statusEl.textContent = "生成完成";
+      }
+
+      document.getElementById("generateButton").addEventListener("click", async () => {
+        try {
+          await callApi("/api/generate", requestPayload());
+        } catch (error) {
+          statusEl.textContent = `失败：${error.message}`;
+        }
+      });
+
+      document.getElementById("summarizeButton").addEventListener("click", async () => {
+        try {
+          statusEl.textContent = "总结来源中...";
+          draftsEl.innerHTML = "";
+          researchEl.innerHTML = "";
+          const response = await fetch("/api/summarize_sources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestPayload()),
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "请求失败");
+          }
+          const data = await response.json();
+          renderSourceSummaryOnly(data);
+          statusEl.textContent = "来源摘要完成";
+        } catch (error) {
+          statusEl.textContent = `失败：${error.message}`;
+        }
+      });
+
+      document.getElementById("reviseButton").addEventListener("click", async () => {
+        try {
+          await callApi("/api/revise", {
+            request: requestPayload(),
+            feedback: document.getElementById("feedback").value.trim(),
+          });
+        } catch (error) {
+          statusEl.textContent = `失败：${error.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>
