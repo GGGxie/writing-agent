@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from writing_agent.graph.state import GraphState
-from writing_agent.schemas.blocks import ImagePlanItem
+from writing_agent.models import ImagePlanItem
 from writing_agent.services.tracing import traceable
 
 
 @traceable(name="plan_images")
 def image_plan_node(state: GraphState) -> dict:
+    gate = state.get("evidence_gate")
+    if gate is not None and not gate.can_draft:
+        return {"image_plan": []}
     request = state["request"]
     outline = state.get("outline", [])
     items: list[ImagePlanItem] = [

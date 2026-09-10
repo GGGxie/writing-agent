@@ -1,0 +1,27 @@
+max_seen_items: 50000
+
+x:
+  enabled: false
+  sync_rules: true
+  managed_tag_prefix: "wechat-source:"
+  tags: [X]
+  rules:
+    - tag: ai-official
+      value: '(from:OpenAI OR from:AnthropicAI OR from:GoogleDeepMind) -is:retweet'
+    - tag: tech-signal
+      value: '(AI OR robotics OR chip OR "open source") lang:en -is:retweet'
+
+rsshub:
+  enabled: true
+  poll_interval_seconds: 300
+  request_timeout_seconds: 20
+  max_items_per_feed: 20
+  max_item_age_hours: 168
+  feeds:
+    - id: rsshub-example
+      name: RSSHub 示例源
+      url: http://localhost:1200/github/trending/daily/any
+      enabled: false
+      tags: [开源, GitHub]
+      # RSSHub 是传输层，来源等级取决于实际原始页面，而不是 RSSHub 本身。
+      source_tier: C

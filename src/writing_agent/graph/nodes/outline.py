@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from writing_agent.graph.state import GraphState
-from writing_agent.schemas.blocks import OutlineSection
-from writing_agent.services.llm import concise_excerpt, generate_text
+from writing_agent.models import OutlineSection
+from writing_agent.services.llm import concise_excerpt, generate_text_strict
 from writing_agent.services.research import summarize_notes
 from writing_agent.services.tracing import traceable
 
 
 @traceable(name="build_outline")
 def outline_node(state: GraphState) -> dict:
+    gate = state.get("evidence_gate")
+    if gate is not None and not gate.can_draft:
+        return {"outline": []}
     request = state["request"]
     notes_text = summarize_notes(state.get("research_notes", []))
+    materials_text = "\n".join(state.get("materials", []))[:12_000]
     fallback_sections = [
         OutlineSection(
             heading="开场钩子",
@@ -42,23 +46,38 @@ def outline_node(state: GraphState) -> dict:
     fallback = "\n".join(
         f"{section.heading}: {'; '.join(section.key_points)}" for section in fallback_sections
     )
-    generated = generate_text(
-        prompt=(
-            "你是中文内容策划，请围绕下列信息写出三段式创作大纲，"
-            "每段一行：标题：要点1；要点2；要点3。\n"
-            f"主题：{request.topic}\n"
-            f"受众：{request.audience}\n"
-            f"语气：{request.tone}\n"
-            f"研究摘要：\n{notes_text}\n"
-        ),
-        fallback=fallback,
+    prompt = (
+        "你是中文内容策划。请根据编辑规范、内容类型模板和研究材料生成自然大纲，"
+        "不要强制三段式。只输出 5 到 8 个正文段落，不要单独输出文章标题。"
+        "每段一行：段落标题：要点1；要点2；要点3。\n"
+        f"主题：{request.topic}\n"
+        f"创作方式：{request.creation_mode.value}\n"
+        f"核心问题：{request.core_question or '未填写'}\n"
+        f"初步观点：{request.initial_thesis or '未填写'}\n"
+        f"分析对象：{request.analysis_target or '未填写'}\n"
+        f"受众：{request.audience}\n"
+        f"语气：{request.tone}\n"
+        f"作者笔记与实践材料：\n{materials_text}\n"
+        f"研究摘要：\n{notes_text}\n"
+        f"编辑规范：\n{state.get('editorial_context', '')}\n"
+        f"内容模板：\n{state.get('selected_template', '')}\n"
     )
+    warnings = list(state.get("warnings", []))
+    try:
+        generated = generate_text_strict(prompt)
+    except RuntimeError as exc:
+        generated = fallback
+        warnings.append(f"大纲模型不可用，已使用明确的基础大纲：{exc}")
 
     outline: list[OutlineSection] = []
     for line in generated.splitlines():
-        if ":" not in line:
+        separator = "：" if "：" in line else ":" if ":" in line else None
+        if separator is None:
             continue
-        heading, raw_points = line.split(":", 1)
+        heading, raw_points = line.split(separator, 1)
+        heading = heading.strip().lstrip("-# ").strip()
+        if heading in {"标题", "文章标题"}:
+            continue
         points = [item.strip(" ;") for item in raw_points.split("；") if item.strip(" ;")]
         if not points:
             points = [item.strip(" ;") for item in raw_points.split(";") if item.strip(" ;")]
@@ -69,7 +88,9 @@ def outline_node(state: GraphState) -> dict:
                 key_points=points[:4],
             )
         )
+        if len(outline) >= 8:
+            break
     if not outline:
         outline = fallback_sections
 
-    return {"outline": outline}
+    return {"outline": outline, "warnings": list(dict.fromkeys(warnings))}

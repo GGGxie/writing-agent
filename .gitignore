@@ -2,9 +2,13 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 *.egg-info/
 dist/
 build/
 .env
 generated_images/
 .cursor/
+.codex-recovery-test*/
+workspace/.collector.sqlite3*
+config/sources.yaml

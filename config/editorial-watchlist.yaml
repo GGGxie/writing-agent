@@ -1,0 +1,44 @@
+# 信息源配置示例。账号、URL 与优先级需要定期复核。
+# X 是线索层；关键事件还要回到官方公告、论文、代码或完整发言。
+
+topics:
+  - id: foundation-models
+    label: 基础模型与研究
+    priority: high
+    keywords: []
+    x_accounts: []
+    official_feeds: []
+
+  - id: ai-products
+    label: AI 产品与应用
+    priority: high
+    keywords: []
+    x_accounts: []
+    official_feeds: []
+
+  - id: robotics-hardware
+    label: 机器人、硬件与芯片
+    priority: medium
+    keywords: []
+    x_accounts: []
+    official_feeds: []
+
+  - id: open-source
+    label: 开源项目与开发者生态
+    priority: high
+    keywords: []
+    github_repositories: []
+    x_accounts: []
+
+  - id: companies-policy
+    label: 公司动态、产业与政策
+    priority: medium
+    keywords: []
+    official_feeds: []
+
+rules:
+  languages: [zh, en]
+  exclude_keywords: []
+  collect_reposts: false
+  require_primary_source_before_drafting: true
+  human_approval_before_publishing: true

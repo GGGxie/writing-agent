@@ -1,0 +1,6 @@
+interface:
+  display_name: "微信公众号编辑"
+  short_description: "研究、撰写与审校科技和 AI 公众号内容"
+  default_prompt: "Use $wechat-editorial to turn this topic into a source-grounded WeChat article draft."
+policy:
+  allow_implicit_invocation: true

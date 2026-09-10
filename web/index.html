@@ -4,426 +4,116 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>中文图文写作 Agent</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        --bg: #0f172a;
-        --panel: rgba(15, 23, 42, 0.84);
-        --panel-soft: rgba(30, 41, 59, 0.9);
-        --border: rgba(148, 163, 184, 0.22);
-        --text: #e2e8f0;
-        --muted: #94a3b8;
-        --accent: #a855f7;
-        --accent-soft: rgba(168, 85, 247, 0.18);
-      }
-
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: "PingFang SC", "Noto Sans SC", sans-serif;
-        background:
-          radial-gradient(circle at top right, rgba(168, 85, 247, 0.18), transparent 30%),
-          radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.18), transparent 28%),
-          var(--bg);
-        color: var(--text);
-      }
-
-      .shell {
-        width: min(1240px, calc(100vw - 32px));
-        margin: 24px auto 48px;
-        display: grid;
-        grid-template-columns: 360px 1fr;
-        gap: 20px;
-      }
-
-      .panel {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        backdrop-filter: blur(18px);
-        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
-      }
-
-      .left {
-        padding: 20px;
-        position: sticky;
-        top: 24px;
-        height: fit-content;
-      }
-
-      h1 {
-        margin: 0 0 8px;
-        font-size: 28px;
-      }
-
-      .hint {
-        margin: 0 0 20px;
-        color: var(--muted);
-        line-height: 1.6;
-        font-size: 14px;
-      }
-
-      label {
-        display: block;
-        margin: 14px 0 8px;
-        font-size: 14px;
-        color: #cbd5e1;
-      }
-
-      input, textarea, button {
-        width: 100%;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        background: var(--panel-soft);
-        color: var(--text);
-        padding: 12px 14px;
-        font: inherit;
-      }
-
-      textarea {
-        min-height: 110px;
-        resize: vertical;
-      }
-
-      button {
-        margin-top: 16px;
-        cursor: pointer;
-        background: linear-gradient(135deg, #7c3aed, #2563eb);
-        border: none;
-        font-weight: 600;
-      }
-
-      .secondary {
-        background: transparent;
-        border: 1px solid var(--border);
-      }
-
-      .right {
-        padding: 20px;
-      }
-
-      .toolbar {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-bottom: 18px;
-      }
-
-      .badge {
-        display: inline-flex;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        color: #d8b4fe;
-        background: var(--accent-soft);
-        border: 1px solid rgba(216, 180, 254, 0.18);
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 16px;
-      }
-
-      .draft {
-        padding: 18px;
-        border-radius: 22px;
-        background: rgba(15, 23, 42, 0.72);
-        border: 1px solid var(--border);
-      }
-
-      .draft h2 {
-        margin: 4px 0 8px;
-        font-size: 20px;
-      }
-
-      .draft p.meta {
-        margin: 0 0 14px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .block {
-        margin-bottom: 14px;
-        padding: 14px;
-        background: rgba(30, 41, 59, 0.68);
-        border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.12);
-      }
-
-      .block.cover img,
-      .block.image img {
-        width: 100%;
-        display: block;
-        border-radius: 16px;
-      }
-
-      .block.cover {
-        padding: 10px;
-      }
-
-      .block.heading {
-        font-weight: 700;
-        color: #f8fafc;
-      }
-
-      .block.summary,
-      .block.quote,
-      .block.tips {
-        color: #cbd5e1;
-      }
-
-      details {
-        margin-top: 12px;
-      }
-
-      summary {
-        cursor: pointer;
-        color: #c4b5fd;
-      }
-
-      pre {
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: rgba(15, 23, 42, 0.92);
-        padding: 14px;
-        border-radius: 16px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-      }
-
-      .columns {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        margin-bottom: 16px;
-      }
-
-      @media (max-width: 980px) {
-        .shell { grid-template-columns: 1fr; }
-        .left { position: static; }
-        .columns { grid-template-columns: 1fr; }
-      }
-    </style>
+    <link rel="stylesheet" href="/assets/styles.css?v=20260910-1" />
   </head>
   <body>
-    <div class="shell">
+    <section class="auth-shell" id="authGate" role="dialog" aria-modal="true" aria-labelledby="authTitle" hidden>
+      <div class="panel auth-card">
+        <h1 id="authTitle">身份验证</h1>
+        <p class="hint" id="authStatus">请使用已加入白名单的 Google 账号登录。</p>
+        <div id="googleButton"></div>
+        <button class="secondary" id="dismissLoginButton">暂不登录</button>
+      </div>
+    </section>
+
+    <div class="shell" id="appShell">
       <section class="panel left">
         <h1>中文图文写作 Agent</h1>
-        <p class="hint">更贴合真实使用习惯的流程是：先粘贴链接，让系统总结视频或文章内容；确认摘要没问题后，再生成小红书和公众号图文稿。</p>
+        <p class="hint">可以从外部线索、自己的问题，或源码与实践开始。系统会区分作者判断和外部事实，再生成可审稿的草稿。</p>
+        <label for="creationMode">创作方式</label>
+        <select id="creationMode">
+          <option value="external-signal">从外部线索开始</option>
+          <option value="original-idea">从自己的问题或观点开始</option>
+          <option value="artifact-analysis">从源码、产品或实践开始</option>
+        </select>
+        <div class="mode-guide" id="modeGuide"></div>
+        <div class="field-group" id="analysisTargetGroup" data-modes="artifact-analysis" hidden>
+          <label for="analysisTarget">分析对象</label>
+          <input id="analysisTarget" placeholder="例如：openai/codex 仓库，或某个产品/工程实践" />
+        </div>
+        <div class="field-group" id="coreQuestionGroup" data-modes="original-idea,artifact-analysis" hidden>
+          <label for="coreQuestion">核心问题</label>
+          <textarea id="coreQuestion" placeholder="例如：Harness 工程真正解决的是什么问题？"></textarea>
+        </div>
+        <div class="field-group" id="initialThesisGroup" data-modes="original-idea" hidden>
+          <label for="initialThesis">我的初步观点</label>
+          <textarea id="initialThesis" placeholder="先写下当前判断。它可以在研究后被修正，不需要一开始就完整。"></textarea>
+        </div>
         <label for="topic">主题</label>
-        <input id="topic" value="AI 写作 Agent 如何做出图文感" />
+        <input id="topic" placeholder="可以先留空，点击“智能整理写作简报”自动生成" required />
         <label for="audience">受众</label>
-        <input id="audience" value="希望做内容运营的创作者" />
+        <input id="audience" placeholder="例如：希望做内容运营的创作者" />
         <label for="tone">语气</label>
-        <input id="tone" value="专业、克制、但不无聊" />
+        <input id="tone" placeholder="例如：专业、克制、但不无聊" />
         <label for="goal">目标</label>
-        <input id="goal" value="同时生成小红书和公众号版本" />
-        <label for="materials">素材 / 信息源</label>
-        <textarea id="materials">https://mp.weixin.qq.com/s/example-article
-https://www.youtube.com/watch?v=example
-希望内容不只是大段文字，而是读起来舒服，有封面和段间配图。</textarea>
+        <input id="goal" placeholder="例如：生成等待人工确认的公众号草稿" />
+        <label for="contentType">内容类型</label>
+        <select id="contentType">
+          <option value="rapid-analysis">快速解读</option>
+          <option value="flash-news">闪讯</option>
+          <option value="deep-dive">深度分析</option>
+          <option value="product-analysis">产品解析</option>
+          <option value="product-review">产品实测</option>
+          <option value="open-source-analysis">开源/源码解析</option>
+          <option value="tool-release">自研工具发布</option>
+          <option value="opinion">观点</option>
+        </select>
+        <label for="platformMode">输出平台</label>
+        <select id="platformMode">
+          <option value="wechat">仅公众号</option>
+          <option value="both">公众号 + 小红书</option>
+          <option value="xiaohongshu">仅小红书</option>
+        </select>
+        <div class="field-group" id="sourceVersionGroup" data-modes="artifact-analysis" hidden>
+          <label for="sourceVersion">版本</label>
+          <input id="sourceVersion" placeholder="源码填写 commit / tag / branch；产品填写版本号" />
+        </div>
+        <label for="materials" id="materialsLabel">线索 / 外部来源</label>
+        <textarea id="materials" placeholder="每行一条链接或正文。社交帖子用于发现线索，官方文档、论文和源码用于确认事实。"></textarea>
+        <div class="field-help" id="materialsHelp">需要手动确认等级时，可使用 A!|URL；普通链接会由系统初步判断。</div>
+        <div class="field-group" id="authorNotesGroup" data-modes="original-idea" hidden>
+          <label for="authorNotes">我的笔记与论据</label>
+          <textarea id="authorNotes" placeholder="写下你的推理、例子、反例、顾虑和想保留的表达。建议至少 80 字。"></textarea>
+        </div>
+        <div class="field-group" id="artifactNotesGroup" data-modes="artifact-analysis" hidden>
+          <label for="artifactNotes">源码阅读 / 验证记录</label>
+          <textarea id="artifactNotes" placeholder="记录关键文件、调用链、运行环境、步骤、结果、失败和限制。建议至少 80 字。"></textarea>
+        </div>
+        <button id="suggestButton" class="secondary">智能整理写作简报</button>
         <label for="feedback">修订反馈（可选）</label>
         <textarea id="feedback" placeholder="例如：请把语气再克制一点，公众号部分加重事实感。"></textarea>
-        <button id="summarizeButton" class="secondary">先总结来源</button>
-        <button id="generateButton">根据摘要生成图文草稿</button>
+        <button id="summarizeButton" class="secondary">分析素材与来源</button>
+        <button id="generateButton">生成图文草稿</button>
         <button id="reviseButton" class="secondary">带反馈重新生成</button>
+        <button id="signalsButton" class="secondary">查看最近采集线索</button>
+        <div class="action-feedback" id="actionFeedback" role="status" aria-live="polite" hidden>
+          <span class="action-spinner" aria-hidden="true"></span>
+          <span id="actionFeedbackText"></span>
+        </div>
       </section>
 
       <section class="panel right">
         <div class="toolbar">
-          <span class="badge" id="status">等待生成</span>
+          <span class="badge" id="status" aria-live="polite" hidden></span>
+          <span class="auth-user" id="authUser">未登录</span>
+          <button class="logout-button" id="logoutButton">登录</button>
         </div>
-        <div id="research"></div>
+        <div id="research">
+          <div class="portfolio-intro" id="portfolioIntro">
+            <h2>把线索、思考和实践，整理成有依据的中文内容</h2>
+            <p>你可以从一条新消息、一个自己的问题，或一段源码与实践记录开始。工作台会先整理写作简报和证据边界，再生成公众号或小红书草稿。</p>
+            <div class="feature-grid">
+              <div class="feature-card"><strong>三种创作入口</strong><span>外部线索、原创观点、源码与实践分别使用适合自己的整理方式。</span></div>
+              <div class="feature-card"><strong>事实与观点分开</strong><span>外部事实要有来源，作者笔记保留为判断，不被包装成新闻。</span></div>
+              <div class="feature-card"><strong>可审稿草稿</strong><span>按内容类型生成公众号或小红书版本，并保留人工修订与确认。</span></div>
+            </div>
+          </div>
+        </div>
+        <div id="signals"></div>
         <div class="grid" id="drafts"></div>
       </section>
     </div>
 
-    <script>
-      const statusEl = document.getElementById("status");
-      const researchEl = document.getElementById("research");
-      const draftsEl = document.getElementById("drafts");
-
-      function renderSourceItems(items) {
-        return `
-          <div class="draft">
-            <h2>来源摘要</h2>
-            ${(items || []).map((item) => `
-              <div class="block summary">
-                <strong>${item.title}</strong>
-                <p>${item.summary}</p>
-                ${item.content_excerpt ? `<div class="hint">${item.content_excerpt}</div>` : ""}
-                <div class="hint">${item.source_kind} · ${item.platform}${item.url ? ` · ${item.url}` : ""}</div>
-              </div>`).join("")}
-          </div>
-        `;
-      }
-
-      function requestPayload() {
-        const materialLines = document.getElementById("materials").value
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean);
-
-        function classifyInputKind(content) {
-          const value = content.toLowerCase();
-          if (!value.startsWith("http://") && !value.startsWith("https://")) {
-            return "text";
-          }
-          if (
-            value.includes("youtube.com") ||
-            value.includes("youtu.be") ||
-            value.includes("bilibili.com") ||
-            value.includes("douyin.com") ||
-            value.includes("vimeo.com")
-          ) {
-            return "video";
-          }
-          return "article";
-        }
-
-        return {
-          topic: document.getElementById("topic").value.trim(),
-          audience: document.getElementById("audience").value.trim(),
-          tone: document.getElementById("tone").value.trim(),
-          goal: document.getElementById("goal").value.trim(),
-          materials: materialLines.map((content) => ({
-            kind: classifyInputKind(content),
-            content,
-            source: classifyInputKind(content) === "text" ? null : content,
-          })),
-        };
-      }
-
-      function blockTemplate(block) {
-        const typeClass = `block ${block.type}`;
-        if (block.type === "cover" || block.type === "image") {
-          return `
-            <div class="${typeClass}">
-              <img src="${block.image_url}" alt="${block.alt_text || ""}" />
-              ${block.caption ? `<div class="hint">${block.caption}</div>` : ""}
-            </div>
-          `;
-        }
-
-        return `
-          <div class="${typeClass}">
-            ${block.text ? `<div>${block.text}</div>` : ""}
-          </div>
-        `;
-      }
-
-      function renderResponse(data) {
-        researchEl.innerHTML = `
-          <div class="columns">
-            ${renderSourceItems(data.source_items || [])}
-            <div class="draft">
-              <h2>研究摘要</h2>
-              ${data.research_notes.map((note) => `
-                <div class="block summary">
-                  <strong>${note.title}</strong>
-                  <p>${note.summary}</p>
-                  <div class="hint">${(note.bullets || []).join(" · ")}</div>
-                </div>`).join("")}
-            </div>
-            <div class="draft">
-              <h2>配图计划</h2>
-              ${data.image_plan.map((item) => `
-                <div class="block tips">
-                  <strong>${item.purpose}</strong>
-                  <p>${item.placement_hint}</p>
-                  <div class="hint">${item.prompt}</div>
-                </div>`).join("")}
-            </div>
-          </div>
-        `;
-
-        draftsEl.innerHTML = data.drafts.map((draft) => `
-          <article class="draft">
-            <span class="badge">${draft.platform}</span>
-            <h2>${draft.title}</h2>
-            <p class="meta">${draft.summary}</p>
-            ${(draft.blocks || []).map(blockTemplate).join("")}
-            <details>
-              <summary>查看 Markdown 导出</summary>
-              <pre>${draft.markdown}</pre>
-            </details>
-            ${draft.quality ? `
-              <details>
-                <summary>查看质检结果（${draft.quality.score} 分）</summary>
-                <pre>${[...(draft.quality.findings || []), "", ...(draft.quality.suggestions || [])].join("\n")}</pre>
-              </details>` : ""}
-          </article>
-        `).join("");
-      }
-
-      function renderSourceSummaryOnly(data) {
-        researchEl.innerHTML = `
-          <div class="columns">
-            ${renderSourceItems(data.source_items || [])}
-          </div>
-        `;
-        draftsEl.innerHTML = "";
-      }
-
-      async function callApi(path, payload) {
-        statusEl.textContent = "生成中...";
-        draftsEl.innerHTML = "";
-        researchEl.innerHTML = "";
-        const response = await fetch(path, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || "请求失败");
-        }
-        const data = await response.json();
-        renderResponse(data);
-        statusEl.textContent = "生成完成";
-      }
-
-      document.getElementById("generateButton").addEventListener("click", async () => {
-        try {
-          await callApi("/api/generate", requestPayload());
-        } catch (error) {
-          statusEl.textContent = `失败：${error.message}`;
-        }
-      });
-
-      document.getElementById("summarizeButton").addEventListener("click", async () => {
-        try {
-          statusEl.textContent = "总结来源中...";
-          draftsEl.innerHTML = "";
-          researchEl.innerHTML = "";
-          const response = await fetch("/api/summarize_sources", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(requestPayload()),
-          });
-          if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || "请求失败");
-          }
-          const data = await response.json();
-          renderSourceSummaryOnly(data);
-          statusEl.textContent = "来源摘要完成";
-        } catch (error) {
-          statusEl.textContent = `失败：${error.message}`;
-        }
-      });
-
-      document.getElementById("reviseButton").addEventListener("click", async () => {
-        try {
-          await callApi("/api/revise", {
-            request: requestPayload(),
-            feedback: document.getElementById("feedback").value.trim(),
-          });
-        } catch (error) {
-          statusEl.textContent = `失败：${error.message}`;
-        }
-      });
-    </script>
+    <script type="module" src="/assets/app.js?v=20260910-1"></script>
   </body>
 </html>

@@ -1,0 +1,45 @@
+[Unit]
+Description=Writing Agent FastAPI service
+After=network-online.target cliproxyapi.service
+Wants=network-online.target cliproxyapi.service
+
+[Service]
+Type=simple
+User=writing-agent
+Group=writing-agent
+WorkingDirectory=/root/Document/writing-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/root/Document/writing-agent/.env
+ExecStart=/root/Document/writing-agent/.venv/bin/uvicorn writing_agent.api.main:app --app-dir src --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Service sandbox: the app may only write its runtime output directories.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/Document/writing-agent/workspace
+ReadWritePaths=/root/Document/writing-agent/generated_images
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

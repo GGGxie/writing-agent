@@ -1,0 +1,24 @@
+# CLIProxyAPI is a private local sidecar. Do not expose port 8317 through
+# Cloudflare, a reverse proxy, or a public network interface.
+host: "127.0.0.1"
+port: 8317
+auth-dir: "/var/lib/cliproxyapi/auths"
+
+api-keys:
+  - "replace-with-a-long-random-local-key"
+
+routing:
+  strategy: "round-robin"
+
+request-retry: 3
+max-retry-credentials: 0
+max-retry-interval: 30
+
+debug: false
+logging-to-file: false
+usage-statistics-enabled: false
+
+remote-management:
+  allow-remote: false
+  secret-key: ""
+  disable-control-panel: true
