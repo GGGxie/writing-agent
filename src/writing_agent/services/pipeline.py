@@ -46,6 +46,8 @@ def summarize_sources(request: GenerateRequest) -> SourceSummaryResponse:
         workflow_id=request.workflow_id,
         topic=request.topic,
         source_items=(
-            source_items if source_items is not None else summarize_only(request.materials)
+            source_items
+            if source_items is not None
+            else summarize_only(request.materials, model_id=request.model_id)
         ),
     )

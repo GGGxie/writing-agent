@@ -33,6 +33,7 @@ class RssFeed:
     enabled: bool = True
     tags: list[str] = field(default_factory=list)
     source_tier: SourceTier = SourceTier.C
+    auto_instance: bool = False
 
 
 @dataclass(frozen=True)
@@ -85,14 +86,20 @@ def load_collector_config(path: Path | None = None) -> CollectorConfig:
             tier = SourceTier(tier_value)
         except ValueError as exc:
             raise ValueError(f"RSS 源 {item.get('id')} 的 source_tier 无效") from exc
+        feed_id = str(item["id"]).strip()
+        feed_url = str(item["url"]).strip()
+        auto_instance = bool(item.get("auto_instance", False))
+        if auto_instance and not feed_url.startswith("/"):
+            raise ValueError(f"RSS 源 {feed_id} 开启 auto_instance 时 url 必须是以 / 开头的路径")
         feeds.append(
             RssFeed(
-                id=str(item["id"]).strip(),
+                id=feed_id,
                 name=str(item["name"]).strip(),
-                url=str(item["url"]).strip(),
+                url=feed_url,
                 enabled=bool(item.get("enabled", True)),
                 tags=[str(value).strip() for value in item.get("tags", []) if str(value).strip()],
                 source_tier=tier,
+                auto_instance=auto_instance,
             )
         )
     if len({feed.id for feed in feeds}) != len(feeds):

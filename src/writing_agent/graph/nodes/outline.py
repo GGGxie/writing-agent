@@ -64,7 +64,7 @@ def outline_node(state: GraphState) -> dict:
     )
     warnings = list(state.get("warnings", []))
     try:
-        generated = generate_text_strict(prompt)
+        generated = generate_text_strict(prompt, model_id=request.model_id)
     except RuntimeError as exc:
         generated = fallback
         warnings.append(f"大纲模型不可用，已使用明确的基础大纲：{exc}")

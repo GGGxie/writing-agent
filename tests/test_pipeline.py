@@ -27,7 +27,7 @@ MODEL_ARTICLE = """# 一个经过证据约束的标题
 def test_outline_accepts_full_width_colon_and_skips_article_title(monkeypatch):
     monkeypatch.setattr(
         "writing_agent.graph.nodes.outline.generate_text_strict",
-        lambda _prompt: (
+        lambda _prompt, **_kwargs: (
             "标题：不应成为正文段落\n"
             "它是什么：官方定位；核心能力\n"
             "适用边界：适合谁；不适合谁"
@@ -49,11 +49,11 @@ def test_outline_accepts_full_width_colon_and_skips_article_title(monkeypatch):
 def _stub_drafting(monkeypatch):
     monkeypatch.setattr(
         "writing_agent.graph.nodes.draft_wechat.generate_text_strict",
-        lambda _prompt: MODEL_ARTICLE,
+        lambda _prompt, **_kwargs: MODEL_ARTICLE,
     )
     monkeypatch.setattr(
         "writing_agent.graph.nodes.draft_xiaohongshu.generate_text_strict",
-        lambda _prompt: MODEL_ARTICLE,
+        lambda _prompt, **_kwargs: MODEL_ARTICLE,
     )
 
 

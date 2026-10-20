@@ -1,0 +1,57 @@
+[Unit]
+Description=RSSHub local sidecar (X/Twitter via /twitter/* routes)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+Environment=DOCKER_CONFIG=/tmp/docker-cli-config
+
+ExecStartPre=-/usr/bin/docker rm -f rsshub
+ExecStart=/bin/sh -c '\
+  exec /usr/bin/docker run --rm --name rsshub \
+    --user "$(id -u rsshub):$(id -g rsshub)" \
+    -p 127.0.0.1:1200:1200 \
+    --env-file=/etc/rsshub/rsshub.env \
+    --env HOME=/tmp \
+    --cap-drop=ALL \
+    --security-opt=no-new-privileges:true \
+    --read-only \
+    --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+    --memory=320m \
+    --memory-swap=320m \
+    --pids-limit=100 \
+    diygod/rsshub:f637d3a5a267d2548c82b2b61c24e0dca0a338cf'
+ExecStop=/usr/bin/docker stop -t 10 rsshub
+
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

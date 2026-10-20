@@ -30,11 +30,11 @@ def _json_value(value: Any) -> Any:
         return _json_value(value.model_dump())
     if isinstance(value, Enum):
         return value.value
-    if isinstance(value, (datetime, Path)):
+    if isinstance(value, datetime | Path):
         return str(value)
     if isinstance(value, dict):
         return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_json_value(item) for item in value]
     return value
 

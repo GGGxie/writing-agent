@@ -11,4 +11,5 @@ generated_images/
 .cursor/
 .codex-recovery-test*/
 workspace/.collector.sqlite3*
+workspace/
 config/sources.yaml

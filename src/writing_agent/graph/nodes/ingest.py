@@ -21,13 +21,15 @@ def ingest_node(state: GraphState) -> dict:
             return {"materials": materials, "source_items": source_items}
         except SourceSnapshotError as exc:
             warning = f"已保存的来源检查结果不可用，已重新检查：{exc}"
-            materials, source_items = resolve_source_inputs(request.materials)
+            materials, source_items = resolve_source_inputs(
+                request.materials, model_id=request.model_id
+            )
             return {
                 "materials": materials,
                 "source_items": source_items,
                 "warnings": [*state.get("warnings", []), warning],
             }
-    materials, source_items = resolve_source_inputs(request.materials)
+    materials, source_items = resolve_source_inputs(request.materials, model_id=request.model_id)
     if not materials:
         materials = [f"围绕主题“{request.topic}”进行结构化创作。"]
 

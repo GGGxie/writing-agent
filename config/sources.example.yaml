@@ -25,3 +25,38 @@ rsshub:
       tags: [开源, GitHub]
       # RSSHub 是传输层，来源等级取决于实际原始页面，而不是 RSSHub 本身。
       source_tier: C
+
+    - id: x-openai-selfhosted
+      name: OpenAI（自建 RSSHub，本机 127.0.0.1）
+      url: http://127.0.0.1:1200/twitter/user/OpenAI
+      enabled: false
+      tags: [AI, 官方, X]
+      # 需要先部署 deploy/rsshub.service（自建 RSSHub sidecar）才能打开，
+      # 见 README「配置 RSSHub」。已实测：不需要你的真实 X 登录态，走的是
+      # RSSHub 内置的匿名 guest token 流程；X 内容仍统一按 C 级线索处理。
+      source_tier: C
+
+    - id: x-anthropic-selfhosted
+      name: AnthropicAI（自建 RSSHub，本机 127.0.0.1）
+      url: http://127.0.0.1:1200/twitter/user/AnthropicAI
+      enabled: false
+      tags: [AI, 官方, X]
+      source_tier: C
+
+    - id: x-googledeepmind-selfhosted
+      name: GoogleDeepMind（自建 RSSHub，本机 127.0.0.1）
+      url: http://127.0.0.1:1200/twitter/user/GoogleDeepMind
+      enabled: false
+      tags: [AI, 官方, X]
+      source_tier: C
+
+    - id: x-openai-auto
+      name: OpenAI（经公共 RSSHub 实例池，仅供参考）
+      url: /twitter/user/OpenAI
+      auto_instance: true
+      enabled: false
+      tags: [AI, 官方, X]
+      # 公共实例由社区自愿维护，长期稳定性和 /twitter 路由是否可用均无保证；
+      # 请求会经过你不控制的第三方服务器，对方能看到你请求的内容。
+      # 打开前请自行评估风险，X 内容仍统一按 C 级线索处理。
+      source_tier: C

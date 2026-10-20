@@ -36,7 +36,7 @@ def suggest_form_fields(request: FormSuggestionRequest) -> FormSuggestionRespons
     ):
         raise ValueError("请先填写线索、作者笔记或分析对象")
 
-    source_items = summarize_only(request.materials)
+    source_items = summarize_only(request.materials, model_id=request.model_id)
     material_lines: list[str] = []
     for index, (material, source) in enumerate(
         zip(request.materials, source_items, strict=False),
@@ -103,7 +103,7 @@ def suggest_form_fields(request: FormSuggestionRequest) -> FormSuggestionRespons
 素材：
 {materials_text or "未提供其他素材"}
 """.strip()
-    raw_response = generate_text_strict(prompt)
+    raw_response = generate_text_strict(prompt, model_id=request.model_id)
     try:
         suggestion = FormSuggestionResponse.model_validate(_extract_json(raw_response))
     except ValidationError as exc:

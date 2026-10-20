@@ -177,6 +177,7 @@ def build_source_summary(
     title: str,
     summary: str,
     excerpt: str | None,
+    model_id: str | None = None,
 ) -> str:
     fallback = summary or excerpt or "未提取到有效摘要。"
     if source_kind == "text":
@@ -195,10 +196,13 @@ def build_source_summary(
             f"摘录：{excerpt or '无'}\n"
         ),
         fallback=fallback,
+        model_id=model_id,
     )
 
 
-def resolve_source_inputs(materials: list[MaterialInput]) -> tuple[list[str], list[SourceItem]]:
+def resolve_source_inputs(
+    materials: list[MaterialInput], *, model_id: str | None = None
+) -> tuple[list[str], list[SourceItem]]:
     normalized: list[str] = []
     source_items: list[SourceItem] = []
 
@@ -228,6 +232,7 @@ def resolve_source_inputs(materials: list[MaterialInput]) -> tuple[list[str], li
                     title=title,
                     summary=summary,
                     excerpt=excerpt,
+                    model_id=model_id,
                 )
                 fetched = True
             except Exception as exc:
@@ -297,6 +302,8 @@ def resolve_source_inputs(materials: list[MaterialInput]) -> tuple[list[str], li
     return normalized, source_items
 
 
-def summarize_only(materials: list[MaterialInput]) -> list[SourceItem]:
-    _, source_items = resolve_source_inputs(materials)
+def summarize_only(
+    materials: list[MaterialInput], *, model_id: str | None = None
+) -> list[SourceItem]:
+    _, source_items = resolve_source_inputs(materials, model_id=model_id)
     return source_items

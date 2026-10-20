@@ -7,7 +7,7 @@ from writing_agent.services.form_suggestion import suggest_form_fields
 def test_suggest_form_fields_parses_model_json(monkeypatch):
     monkeypatch.setattr(
         "writing_agent.services.form_suggestion.generate_text_strict",
-        lambda _prompt: """```json
+        lambda _prompt, **_kwargs: """```json
         {
           "topic": "一个新 AI 产品值不值得关注",
           "audience": "关注 AI 产品的普通读者",
@@ -32,7 +32,7 @@ def test_suggest_form_fields_parses_model_json(monkeypatch):
 def test_suggest_form_supports_original_idea_without_external_source(monkeypatch):
     captured = {}
 
-    def fake_generate(prompt: str) -> str:
+    def fake_generate(prompt: str, **_kwargs) -> str:
         captured["prompt"] = prompt
         return """{
           "topic": "Harness 工程不是提示词工程",
@@ -70,7 +70,7 @@ def test_suggest_form_rejects_empty_input():
 def test_suggest_form_downgrades_unverified_review_to_product_analysis(monkeypatch):
     monkeypatch.setattr(
         "writing_agent.services.form_suggestion.generate_text_strict",
-        lambda _prompt: """{
+        lambda _prompt, **_kwargs: """{
           "topic": "一个产品的能力边界",
           "audience": "需要评估产品的技术团队",
           "tone": "专业、克制",
@@ -92,7 +92,7 @@ def test_suggest_form_downgrades_unverified_review_to_product_analysis(monkeypat
 def test_suggest_form_keeps_review_when_real_practice_record_exists(monkeypatch):
     monkeypatch.setattr(
         "writing_agent.services.form_suggestion.generate_text_strict",
-        lambda _prompt: """{
+        lambda _prompt, **_kwargs: """{
           "topic": "产品实测",
           "audience": "准备选型的开发者",
           "tone": "专业、克制",

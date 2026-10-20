@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>中文图文写作 Agent</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260910-1" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260917-3" />
   </head>
   <body>
     <section class="auth-shell" id="authGate" role="dialog" aria-modal="true" aria-labelledby="authTitle" hidden>
@@ -64,6 +64,10 @@
           <option value="both">公众号 + 小红书</option>
           <option value="xiaohongshu">仅小红书</option>
         </select>
+        <label for="modelId">生成模型</label>
+        <select id="modelId">
+          <option value="">默认模型</option>
+        </select>
         <div class="field-group" id="sourceVersionGroup" data-modes="artifact-analysis" hidden>
           <label for="sourceVersion">版本</label>
           <input id="sourceVersion" placeholder="源码填写 commit / tag / branch；产品填写版本号" />
@@ -79,13 +83,19 @@
           <label for="artifactNotes">源码阅读 / 验证记录</label>
           <textarea id="artifactNotes" placeholder="记录关键文件、调用链、运行环境、步骤、结果、失败和限制。建议至少 80 字。"></textarea>
         </div>
-        <button id="suggestButton" class="secondary">智能整理写作简报</button>
-        <label for="feedback">修订反馈（可选）</label>
-        <textarea id="feedback" placeholder="例如：请把语气再克制一点，公众号部分加重事实感。"></textarea>
-        <button id="summarizeButton" class="secondary">分析素材与来源</button>
-        <button id="generateButton">生成图文草稿</button>
-        <button id="reviseButton" class="secondary">带反馈重新生成</button>
-        <button id="signalsButton" class="secondary">查看最近采集线索</button>
+        <div class="button-group workflow-group">
+          <button id="suggestButton" class="secondary">智能整理写作简报</button>
+          <button id="summarizeButton" class="secondary">分析素材与来源</button>
+          <button id="generateButton">生成图文草稿</button>
+          <label for="feedback">修订反馈（可选）</label>
+          <textarea id="feedback" placeholder="例如：请把语气再克制一点，公众号部分加重事实感。"></textarea>
+          <button id="reviseButton" class="secondary">带反馈重新生成</button>
+        </div>
+        <div class="button-group signals-group">
+          <div class="group-divider">线索库 · 与当前草稿无关</div>
+          <button id="signalsButton" class="secondary">查看最近采集线索</button>
+          <button id="collectButton" class="secondary">立即采集</button>
+        </div>
         <div class="action-feedback" id="actionFeedback" role="status" aria-live="polite" hidden>
           <span class="action-spinner" aria-hidden="true"></span>
           <span id="actionFeedbackText"></span>
@@ -98,22 +108,30 @@
           <span class="auth-user" id="authUser">未登录</span>
           <button class="logout-button" id="logoutButton">登录</button>
         </div>
-        <div id="research">
-          <div class="portfolio-intro" id="portfolioIntro">
-            <h2>把线索、思考和实践，整理成有依据的中文内容</h2>
-            <p>你可以从一条新消息、一个自己的问题，或一段源码与实践记录开始。工作台会先整理写作简报和证据边界，再生成公众号或小红书草稿。</p>
-            <div class="feature-grid">
-              <div class="feature-card"><strong>三种创作入口</strong><span>外部线索、原创观点、源码与实践分别使用适合自己的整理方式。</span></div>
-              <div class="feature-card"><strong>事实与观点分开</strong><span>外部事实要有来源，作者笔记保留为判断，不被包装成新闻。</span></div>
-              <div class="feature-card"><strong>可审稿草稿</strong><span>按内容类型生成公众号或小红书版本，并保留人工修订与确认。</span></div>
+        <div class="view-switcher" role="tablist">
+          <button type="button" class="view-tab" id="viewTabResults" role="tab" aria-selected="true">创作结果</button>
+          <button type="button" class="view-tab" id="viewTabSignals" role="tab" aria-selected="false">线索库</button>
+        </div>
+        <div id="viewResultsPanel" data-view-panel="results">
+          <div id="research">
+            <div class="portfolio-intro" id="portfolioIntro">
+              <h2>把线索、思考和实践，整理成有依据的中文内容</h2>
+              <p>你可以从一条新消息、一个自己的问题，或一段源码与实践记录开始。工作台会先整理写作简报和证据边界，再生成公众号或小红书草稿。</p>
+              <div class="feature-grid">
+                <div class="feature-card"><strong>三种创作入口</strong><span>外部线索、原创观点、源码与实践分别使用适合自己的整理方式。</span></div>
+                <div class="feature-card"><strong>事实与观点分开</strong><span>外部事实要有来源，作者笔记保留为判断，不被包装成新闻。</span></div>
+                <div class="feature-card"><strong>可审稿草稿</strong><span>按内容类型生成公众号或小红书版本，并保留人工修订与确认。</span></div>
+              </div>
             </div>
           </div>
+          <div class="grid" id="drafts"></div>
         </div>
-        <div id="signals"></div>
-        <div class="grid" id="drafts"></div>
+        <div id="viewSignalsPanel" data-view-panel="signals" hidden>
+          <div id="signals"></div>
+        </div>
       </section>
     </div>
 
-    <script type="module" src="/assets/app.js?v=20260910-1"></script>
+    <script type="module" src="/assets/app.js?v=20260923-1"></script>
   </body>
 </html>

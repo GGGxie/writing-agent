@@ -17,13 +17,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def build_text_model() -> ChatOpenAI | None:
+def build_text_model(model_id: str | None = None) -> ChatOpenAI | None:
     settings = get_settings()
     if ChatOpenAI is None or not settings.has_text_model:
         return None
 
     kwargs = {
-        "model": settings.text_model_name,
+        "model": model_id or settings.text_model_name,
         "api_key": settings.text_api_key,
         "timeout": settings.text_request_timeout_seconds,
         "max_retries": settings.text_max_retries,
@@ -70,8 +70,8 @@ def _response_text(response: object) -> str:
 
 
 @traceable(name="generate_text")
-def generate_text(prompt: str, fallback: str) -> str:
-    client = build_text_model()
+def generate_text(prompt: str, fallback: str, *, model_id: str | None = None) -> str:
+    client = build_text_model(model_id)
     if client is None:
         return fallback
 
@@ -84,9 +84,9 @@ def generate_text(prompt: str, fallback: str) -> str:
 
 
 @traceable(name="generate_text_strict")
-def generate_text_strict(prompt: str) -> str:
+def generate_text_strict(prompt: str, *, model_id: str | None = None) -> str:
     """Generate text without disguising model or network failures as a finished draft."""
-    client = build_text_model()
+    client = build_text_model(model_id)
     if client is None:
         raise RuntimeError("未配置可用的文本模型，已保留研究材料但不会伪造完整文章")
     try:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from writing_agent.config import get_settings
 from writing_agent.models import CreationMode, GenerateRequest, ResearchNote, SourceItem
 from writing_agent.services.llm import build_text_model, concise_excerpt
 from writing_agent.services.tracing import traceable
@@ -11,7 +12,6 @@ try:
 except ImportError:
     create_deep_agent = None
 
-from writing_agent.config import get_settings
 from writing_agent.editorial.resources import load_editorial_context
 
 
@@ -163,14 +163,13 @@ def run_research(
     request: GenerateRequest,
     source_items: list[SourceItem] | None = None,
 ) -> tuple[list[ResearchNote], list[str]]:
-    settings = get_settings()
-    if create_deep_agent is None or not settings.has_text_model:
+    if create_deep_agent is None or not get_settings().has_text_model:
         return _fallback_notes(request, source_items), [
             "研究模型不可用，本阶段使用结构化核查清单，未伪装为完整研究。"
         ]
 
     try:
-        model = build_text_model()
+        model = build_text_model(request.model_id)
         if model is None:
             raise RuntimeError("文本模型客户端不可用")
         agent = create_deep_agent(

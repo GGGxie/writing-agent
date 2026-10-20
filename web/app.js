@@ -1,4 +1,4 @@
-import { responseHtml, signalsHtml, sourceSummaryHtml } from "./render.js?v=20260910-1";
+import { responseHtml, signalsHtml, sourceSummaryHtml } from "./render.js?v=20260918-1";
 
 const statusEl = document.getElementById("status");
 const researchEl = document.getElementById("research");
@@ -15,8 +15,12 @@ const creationModeEl = document.getElementById("creationMode");
 const modeGuideEl = document.getElementById("modeGuide");
 const actionFeedbackEl = document.getElementById("actionFeedback");
 const actionFeedbackTextEl = document.getElementById("actionFeedbackText");
+const viewTabResultsEl = document.getElementById("viewTabResults");
+const viewTabSignalsEl = document.getElementById("viewTabSignals");
 const sessionStorageKey = "writing-agent-session";
 const workflowStorageKey = "writing-agent-workflow";
+const activeJobStorageKey = "writing-agent-active-job";
+const jobPollIntervalMs = 1500;
 let authCsrfToken = "";
 let authConfig = null;
 let currentUser = null;
@@ -95,6 +99,14 @@ function updateCreationMode({ setDefaultType = false } = {}) {
   }
 }
 
+function setActiveView(view) {
+  document.querySelectorAll("[data-view-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.viewPanel !== view;
+  });
+  viewTabResultsEl.setAttribute("aria-selected", String(view === "results"));
+  viewTabSignalsEl.setAttribute("aria-selected", String(view === "signals"));
+}
+
 function renderActionFeedback() {
   if (!actionBaseMessage) {
     actionFeedbackEl.hidden = true;
@@ -118,7 +130,7 @@ function setStatus(message = "", state = "info") {
 function setActionButtonsDisabled(disabled) {
   document.querySelectorAll(
     "#suggestButton, #summarizeButton, #generateButton, #reviseButton, " +
-    "#signalsButton, .signal-create-button"
+    "#signalsButton, #collectButton, .signal-create-button, .signal-relay-button"
   ).forEach((button) => {
     button.disabled = disabled;
   });
@@ -134,6 +146,27 @@ function saveSessionToken(value = "") {
     }
   } catch (_error) {
     // 某些内置浏览器会禁用会话存储，当前页面仍可使用内存中的令牌。
+  }
+}
+
+function saveActiveJob(job = null) {
+  try {
+    if (job) {
+      window.sessionStorage.setItem(activeJobStorageKey, JSON.stringify(job));
+    } else {
+      window.sessionStorage.removeItem(activeJobStorageKey);
+    }
+  } catch (_error) {
+    // 会话存储不可用时仍可在当前页面等待任务完成。
+  }
+}
+
+function loadActiveJob() {
+  try {
+    const raw = window.sessionStorage.getItem(activeJobStorageKey);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_error) {
+    return null;
   }
 }
 
@@ -207,6 +240,26 @@ async function refreshAuthConfig() {
   return authConfig;
 }
 
+async function populateModelOptions() {
+  const modelIdEl = document.getElementById("modelId");
+  try {
+    const response = await authFetch("/api/models", { cache: "no-store" });
+    if (!response.ok) throw new Error("无法读取模型列表");
+    const catalog = await response.json();
+    modelIdEl.innerHTML = "";
+    for (const model of catalog.models) {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.available ? model.name : `${model.name}（未配置）`;
+      option.disabled = !model.available;
+      modelIdEl.appendChild(option);
+    }
+    modelIdEl.value = catalog.default_model_id;
+  } catch (error) {
+    console.warn("Loading model catalog failed", error);
+  }
+}
+
 async function prepareGoogleLogin(config) {
   await loadGoogleIdentity();
   window.google.accounts.id.initialize({
@@ -232,6 +285,7 @@ async function prepareGoogleLogin(config) {
         }
         showWorkspace(me.user);
         setStatus();
+        await resumeActiveJob();
       } catch (error) {
         showLogin(`登录失败：${error.message}`);
       }
@@ -290,6 +344,7 @@ async function initializeAuth() {
     const [meResponse] = await Promise.all([
       authFetch("/api/auth/me", { cache: "no-store" }),
       refreshAuthConfig(),
+      populateModelOptions(),
     ]);
     if (!meResponse.ok) throw new Error("无法检查登录状态");
     const me = await meResponse.json();
@@ -299,6 +354,7 @@ async function initializeAuth() {
     } else {
       saveSessionToken();
     }
+    await resumeActiveJob();
   } catch (error) {
     authUserEl.textContent = "登录状态检查失败";
     console.warn("Auth initialization failed", error);
@@ -412,6 +468,7 @@ function requestPayload() {
         ? sourceSummaryToken
         : null
     ),
+    model_id: document.getElementById("modelId").value || null,
   };
 }
 
@@ -450,12 +507,14 @@ function showRequestError(error) {
 }
 
 function renderResponse(data) {
+  setActiveView("results");
   const rendered = responseHtml(data);
   researchEl.innerHTML = rendered.research;
   draftsEl.innerHTML = rendered.drafts;
 }
 
 function renderSourceSummaryOnly(data) {
+  setActiveView("results");
   researchEl.innerHTML = sourceSummaryHtml(data);
   draftsEl.innerHTML = "";
 }
@@ -470,11 +529,28 @@ async function loadSignals() {
   const items = await response.json();
   latestSignals = items;
   signalsEl.innerHTML = signalsHtml(items);
+  setActiveView("signals");
   setStatus(`已读取 ${items.length} 条线索`, "success");
 }
 
+async function collectSignals() {
+  setStatus("正在执行 RSS 采集...", "loading");
+  const response = await authFetch("/api/collect/rss", { method: "POST" });
+  if (!response.ok) {
+    if (await handleAuthFailure(response)) throw new Error("请登录后重试");
+    throw new Error(readableApiError(await response.text()));
+  }
+  const result = await response.json();
+  await loadSignals();
+  setStatus(
+    `采集完成 · 新增 ${result.saved} 条 · 重复 ${result.duplicates} 条 · `
+    + `失败 ${result.failed_feeds} 个源`,
+    "success"
+  );
+}
+
 async function callApi(path, payload) {
-  setStatus("正在研究材料、生成大纲和图文草稿...", "loading");
+  setStatus("正在提交后台生成任务...", "loading");
   draftsEl.innerHTML = "";
   researchEl.innerHTML = "";
   const response = await authFetch(path, {
@@ -487,9 +563,99 @@ async function callApi(path, payload) {
     const text = await response.text();
     throw new Error(readableApiError(text));
   }
-  const data = await response.json();
+  const job = await response.json();
+  if (!job.job_id || !job.poll_url) {
+    throw new Error("服务未返回可查询的任务 ID");
+  }
+  saveActiveJob(job);
+  const data = await pollOperationJob(job);
   renderResponse(data);
   setStatus("生成完成，结果已显示在右侧", "success");
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function pollOperationJob(
+  job,
+  { ignoreMissing = false, pollImmediately = false } = {},
+) {
+  let transientFailures = 0;
+  let firstPoll = true;
+  while (true) {
+    if (!firstPoll || !pollImmediately) await wait(jobPollIntervalMs);
+    firstPoll = false;
+    let response;
+    try {
+      response = await authFetch(job.poll_url, { cache: "no-store" });
+    } catch (_error) {
+      transientFailures += 1;
+      if (transientFailures <= 10) {
+        setStatus("暂时无法读取任务进度，正在重试...", "loading");
+        continue;
+      }
+      throw new Error("暂时无法读取任务进度；任务仍可能在后台运行，刷新页面后可继续查询");
+    }
+
+    if (response.status >= 500) {
+      transientFailures += 1;
+      if (transientFailures <= 10) {
+        setStatus("服务暂时不可用，正在重试任务进度...", "loading");
+        continue;
+      }
+    }
+    transientFailures = 0;
+
+    if (!response.ok) {
+      if (await handleAuthFailure(response)) throw new Error("请登录后继续查询任务");
+      const text = await response.text();
+      if (response.status === 404) {
+        saveActiveJob();
+        if (ignoreMissing) return null;
+      }
+      throw new Error(readableApiError(text));
+    }
+
+    const state = await response.json();
+    if (state.status === "queued") {
+      setStatus("任务已排队，等待可用生成槽位...", "loading");
+      continue;
+    }
+    if (state.status === "running") {
+      setStatus("后台正在研究、配图和生成草稿...", "loading");
+      continue;
+    }
+    if (state.status === "failed") {
+      saveActiveJob();
+      throw new Error(state.error || "后台生成任务失败");
+    }
+    if (state.status === "succeeded" && state.result) {
+      saveActiveJob();
+      return state.result;
+    }
+    saveActiveJob();
+    throw new Error("任务返回了无法识别的状态");
+  }
+}
+
+async function resumeActiveJob() {
+  const job = loadActiveJob();
+  if (!job || actionStartedAt) return;
+  if (!currentUser && authConfig?.required !== false) return;
+  const button = job.operation === "revise" ? reviseButtonEl : generateButtonEl;
+  await runButtonAction(button, "正在恢复任务...", async () => {
+    const data = await pollOperationJob(job, {
+      ignoreMissing: true,
+      pollImmediately: true,
+    });
+    if (!data) {
+      setStatus("上次后台任务已失效，可以重新点击生成", "info");
+      return;
+    }
+    renderResponse(data);
+    setStatus("后台任务已完成，结果已恢复", "success");
+  });
 }
 
 async function suggestFromMaterials() {
@@ -512,6 +678,7 @@ async function suggestFromMaterials() {
       initial_thesis: initialThesis || null,
       analysis_target: analysisTarget || null,
       materials,
+      model_id: document.getElementById("modelId").value || null,
     }),
   });
   if (!response.ok) {
@@ -557,8 +724,33 @@ signalsEl.addEventListener("click", (event) => {
     sourceSummaryToken = null;
     sourceSummaryMaterials = "";
     if (await suggestFromMaterials()) {
+      setActiveView("results");
       document.getElementById("topic").scrollIntoView({ behavior: "smooth", block: "center" });
     }
+  });
+});
+
+signalsEl.addEventListener("click", (event) => {
+  const button = event.target.closest(".signal-relay-button");
+  if (!button) return;
+  runButtonAction(button, "正在翻译整理原文...", async () => {
+    const signal = latestSignals[Number(button.dataset.signalIndex)];
+    if (!signal) throw new Error("线索不存在，请重新加载");
+    const response = await authFetch("/api/relay_signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signal,
+        model_id: document.getElementById("modelId").value || null,
+      }),
+    });
+    if (!response.ok) {
+      if (await handleAuthFailure(response)) throw new Error("请登录后重试");
+      throw new Error(readableApiError(await response.text()));
+    }
+    const data = await response.json();
+    renderResponse(data);
+    setStatus("已生成快讯草稿，请审核后发布", "success");
   });
 });
 
@@ -571,7 +763,7 @@ generateButtonEl.addEventListener("click", () => {
       throw new Error("素材尚未分析，请先点击“分析素材与来源”");
     }
     if (!(await requireAuthentication("生成图文草稿"))) return;
-    await callApi("/api/generate", payload);
+    await callApi("/api/generate/jobs", payload);
   });
 });
 
@@ -621,7 +813,7 @@ reviseButtonEl.addEventListener("click", () => {
       throw new Error("素材尚未分析，请先点击“分析素材与来源”");
     }
     if (!(await requireAuthentication("根据反馈重新生成"))) return;
-    await callApi("/api/revise", {
+    await callApi("/api/revise/jobs", {
       request: payload,
       feedback: document.getElementById("feedback").value.trim(),
     });
@@ -636,6 +828,14 @@ signalsButtonEl.addEventListener("click", () => {
   });
 });
 
+const collectButtonEl = document.getElementById("collectButton");
+collectButtonEl.addEventListener("click", () => {
+  runButtonAction(collectButtonEl, "正在采集...", async () => {
+    if (!(await requireAuthentication("执行 RSS 采集"))) return;
+    await collectSignals();
+  });
+});
+
 ["materials", "authorNotes", "artifactNotes"].forEach((id) => {
   document.getElementById(id).addEventListener("input", () => {
     invalidateSourceSummary("素材已修改，请重新分析素材与来源");
@@ -646,6 +846,9 @@ creationModeEl.addEventListener("change", () => {
   invalidateSourceSummary("创作方式已切换，请重新整理写作简报");
   updateCreationMode({ setDefaultType: true });
 });
+
+viewTabResultsEl.addEventListener("click", () => setActiveView("results"));
+viewTabSignalsEl.addEventListener("click", () => setActiveView("signals"));
 
 dismissLoginButtonEl.addEventListener("click", () => {
   authGateEl.hidden = true;

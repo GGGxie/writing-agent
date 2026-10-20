@@ -95,6 +95,11 @@ class CollectorStore:
                 last_modified TEXT,
                 last_checked_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS feed_instances (
+                feed_id TEXT PRIMARY KEY,
+                base_url TEXT NOT NULL,
+                resolved_at TEXT NOT NULL
+            );
             """
         )
         self.connection.commit()
@@ -173,6 +178,30 @@ class CollectorStore:
                     feed_id,
                     etag,
                     last_modified,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+    def get_feed_instance(self, feed_id: str) -> dict[str, str]:
+        row = self.connection.execute(
+            "SELECT base_url, resolved_at FROM feed_instances WHERE feed_id = ?",
+            (feed_id,),
+        ).fetchone()
+        return dict(row) if row else {}
+
+    def set_feed_instance(self, feed_id: str, base_url: str) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO feed_instances(feed_id, base_url, resolved_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(feed_id) DO UPDATE SET
+                    base_url=excluded.base_url,
+                    resolved_at=excluded.resolved_at
+                """,
+                (
+                    feed_id,
+                    base_url,
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

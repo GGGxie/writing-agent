@@ -98,6 +98,21 @@ IMAGE_REQUEST_TIMEOUT_SECONDS=240
 writing-agent doctor
 ```
 
+### 按次选择模型
+
+前端"生成模型"下拉框里的选项不是手动配置的，而是每次请求时实时向
+`OPENAI_BASE_URL`（例如本机 Codex sidecar）发一个 `GET /models` 请求，列出
+该端点当前实际提供的模型——新增/下线模型时，下拉框会自动跟着变，不需要改
+writing-agent 的任何配置。列表会过滤掉明显不是文本生成模型的条目（例如
+`gpt-image-*`、`codex-auto-review` 等），只保留可以拿来写文章的模型。
+
+如果 `OPENAI_API_KEY` 为空，或者这次探测失败（网络错误、端点不支持
+`/models`、返回内容里没有可用的文本模型），会自动回退成只显示
+`TEXT_MODEL_NAME` 这一个选项，行为跟不配置模型选择功能时完全一致。
+
+这个选择只作用于当次生成/分析请求，不会保存为全局"当前模型"——每次都可以
+重新选，也可以不选（留空即用默认模型）。
+
 ## 启动 Web/API
 
 ```bash
@@ -113,12 +128,19 @@ uvicorn writing_agent.api.main:app --app-dir src --host 127.0.0.1 --port 8000
 主要接口：
 
 - `POST /api/generate`：研究、证据判断并按条件生成草稿；
+- `POST /api/generate/jobs`：提交后台生成任务并立即返回任务 ID；
+- `POST /api/revise/jobs`：提交带反馈的后台修订任务；
+- `GET /api/jobs/{job_id}`：查询后台任务状态和最终结果；
 - `POST /api/suggest_form`：按创作方式智能整理可修改的写作简报；
 - `POST /api/summarize_sources`：只解析和总结提交来源；
 - `POST /api/revise`：根据人工反馈重新研究和生成；
 - `GET /api/signals`：查看最近采集线索；
 - `POST /api/collect/rss`：执行一次 RSSHub 采集；
 - `GET /api/editorial/profile`：查看当前编辑档案。
+
+Web 页面默认使用后台任务接口，避免研究、配图和成稿时间较长时被反向代理中断。
+任务状态在当前 API 进程内保留 24 小时（最多 200 条已完成记录），服务重启后任务状态会
+丢失，但已经导出的 Markdown 和配图仍保存在工作区。同步接口继续保留给兼容调用方。
 
 ## 运行日志与 LangSmith
 
@@ -213,6 +235,76 @@ rsshub:
 ```
 
 RSSHub 只是传输方式，`source_tier` 应根据最终原始页面判断。
+
+### 自建 RSSHub，用来读 X/Twitter
+
+`/twitter/*` 这类路由很少有公共实例维护者配置凭据，自建一个本机 RSSHub
+sidecar 更可靠。部署模板位于 `deploy/rsshub.service` 和
+`deploy/rsshub.env.example`，跟 CLIProxyAPI sidecar 的思路一致：只监听
+`127.0.0.1`，不得通过 Cloudflare 或反向代理公开，容器加了内存上限
+（`--memory=320m`）和只读根文件系统，不会影响这台机器上其他服务。
+
+```bash
+useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin --user-group rsshub
+mkdir -p /etc/rsshub && chown root:rsshub /etc/rsshub && chmod 750 /etc/rsshub
+cp deploy/rsshub.env.example /etc/rsshub/rsshub.env
+chown root:rsshub /etc/rsshub/rsshub.env && chmod 640 /etc/rsshub/rsshub.env
+
+cp deploy/rsshub.service /etc/systemd/system/rsshub.service
+systemctl daemon-reload
+systemctl enable --now rsshub.service
+```
+
+`TWITTER_AUTH_TOKEN` 不需要填你的真实凭据：实测确认，只要这个变量非空，
+RSSHub 就会启用它的 Twitter 集成分支，该分支对公开账号（`/twitter/user/:id`）
+和公开 List（`/twitter/list/:id`）的读取会用内置的匿名 guest token 流程完成，
+并不校验这个值本身是否真实有效——留一个任意占位字符串即可，不涉及你的个人
+账号，没有账号被限流/冻结的风险。`config/sources.example.yaml` 里带了三条
+对应示例（`x-openai-selfhosted`/`x-anthropic-selfhosted`/
+`x-googledeepmind-selfhosted`，默认 `enabled: false`，改成 `true` 并确认
+`rsshub.service` 已启动即可使用）。
+
+只有在之后遇到限流、拉不到数据，或者需要读取非公开内容（比如你自己创建的
+私密 List）时，才需要把 `TWITTER_AUTH_TOKEN` 换成你自己 X 账号登录后从浏览器
+DevTools 的 Storage/Cookies 面板复制的真实 `auth_token` 值（不是
+`document.cookie`，因为它是 HttpOnly 的）。这属于用个人账号做非官方自动化
+访问，违反 X 服务条款，存在账号被限流甚至冻结的风险；`CACHE_EXPIRE`（默认
+1800 秒）能降低对 Twitter 的实际请求频率，若只有一个账号，建议把想关注的
+多个账号合并成一个 X List（`/twitter/list/:id`）一次抓取，而不是每个账号
+单开一条 feed，进一步降低触发限流的概率，但无法降为零。
+
+### 不想自己部署 RSSHub？用公共实例池自动选可用的
+
+如果没有自建 RSSHub（比如上面配置里的 `http://localhost:1200`），可以把某条 `feeds`
+配置改成 `auto_instance: true`，这样 `url` 不再是完整地址，而是一段以 `/` 开头的
+RSSHub 路由路径，程序会在每次采集时从 RSSHub 官方维护的公共实例列表
+（<https://docs.rsshub.app/zh/guide/instances>）里按顺序尝试，命中第一个能用的实例并缓存
+1 小时，下次优先复用，减少对公共实例的骚扰：
+
+```yaml
+rsshub:
+  feeds:
+    - id: x-openai-auto
+      name: OpenAI（经公共 RSSHub 实例池，仅供参考）
+      url: /twitter/user/OpenAI
+      auto_instance: true
+      enabled: false
+      tags: [AI, 官方, X]
+      source_tier: C
+```
+
+`config/sources.example.yaml` 里就带了这一条示例（默认 `enabled: false`），可以直接
+改成 `true` 试用。这条路径不限于 Twitter，任何 RSSHub 支持的路由都可以这样用。
+
+风险提示，打开前请自行评估：
+
+- 公共实例由社区自愿维护，不受本项目控制，长期在线率和响应速度没有保证；
+- 实例列表页最后更新于 2023-11-30，可能包含已下线的实例，程序会自动跳过失败的
+  候选，但无法保证列表里一定存在可用实例；
+- 你的请求会经过这些第三方服务器，对方能看到你请求的路由和参数；
+- 类似 `/twitter/*` 这种依赖维护者自行配置凭据的路由，具体某个公共实例是否
+  支持完全不保证；
+- 无论采集是否成功，来自 X/Twitter 的内容仍统一按 `source_tier: C` 处理。
 
 执行一次：
 

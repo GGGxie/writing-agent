@@ -40,6 +40,13 @@ class WorkflowStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class OperationJobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class SourceTier(str, Enum):
     A = "A"
     B = "B"
@@ -109,6 +116,7 @@ class GenerateRequest(BaseModel):
     event_time: datetime | None = None
     source_version: str | None = None
     source_summary_token: str | None = Field(default=None, max_length=100_000)
+    model_id: str | None = Field(default=None, max_length=100)
 
 
 class FormSuggestionRequest(BaseModel):
@@ -123,6 +131,7 @@ class FormSuggestionRequest(BaseModel):
     initial_thesis: str | None = Field(default=None, max_length=2_000)
     analysis_target: str | None = Field(default=None, max_length=500)
     materials: list[MaterialInput] = Field(default_factory=list, max_length=30)
+    model_id: str | None = Field(default=None, max_length=100)
 
 
 class FormSuggestionResponse(BaseModel):
@@ -142,6 +151,17 @@ class FormSuggestionResponse(BaseModel):
 class ReviewRequest(BaseModel):
     request: GenerateRequest
     feedback: str = Field(max_length=10_000)
+
+
+class ModelOption(BaseModel):
+    id: str
+    name: str
+    available: bool
+
+
+class ModelCatalogResponse(BaseModel):
+    default_model_id: str
+    models: list[ModelOption] = Field(default_factory=list)
 
 
 class GoogleCredentialRequest(BaseModel):
@@ -251,6 +271,24 @@ class GenerateResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class OperationJobAccepted(BaseModel):
+    job_id: str
+    operation: str
+    status: OperationJobStatus = OperationJobStatus.QUEUED
+    poll_url: str
+
+
+class OperationJobResponse(BaseModel):
+    job_id: str
+    operation: str
+    status: OperationJobStatus
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    result: GenerateResponse | None = None
+    error: str | None = None
+
+
 class SourceSummaryResponse(BaseModel):
     workflow_id: str
     topic: str
@@ -271,3 +309,14 @@ class SignalRecord(BaseModel):
     tags: list[str] = Field(default_factory=list)
     source_tier: SourceTier = SourceTier.C
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SignalRelayRequest(BaseModel):
+    workflow_id: str = Field(
+        default_factory=lambda: uuid4().hex,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    signal: SignalRecord
+    model_id: str | None = Field(default=None, max_length=100)

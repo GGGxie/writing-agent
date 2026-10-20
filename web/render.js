@@ -177,6 +177,9 @@ export function signalsHtml(items) {
       <button class="secondary signal-create-button" data-signal-index="${index}">
         基于此线索创作
       </button>
+      <button class="secondary signal-relay-button" data-signal-index="${index}">
+        翻译并转发原文
+      </button>
     </div>`).join("");
   return `
     <div class="draft">

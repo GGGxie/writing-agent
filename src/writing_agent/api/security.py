@@ -71,7 +71,11 @@ class SecurityBoundaryMiddleware:
                 return
 
         path = scope.get("path", "")
-        is_public = path in PUBLIC_PATHS or path.startswith("/assets/")
+        is_public = (
+            path in PUBLIC_PATHS
+            or path.startswith("/assets/")
+            or path.startswith("/generated_images/")
+        )
         if self.settings.auth_required and not is_public:
             if not self.settings.auth_configured:
                 await JSONResponse({"detail": "Google 登录尚未完成配置"}, status_code=503)(

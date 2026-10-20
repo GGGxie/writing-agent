@@ -41,7 +41,7 @@ def draft_xiaohongshu_node(state: GraphState) -> dict:
 """.strip()
 
     try:
-        raw_markdown = generate_text_strict(prompt)
+        raw_markdown = generate_text_strict(prompt, model_id=request.model_id)
     except RuntimeError as exc:
         warnings = [*state.get("warnings", []), str(exc)]
         return {"xhs_draft": None, "warnings": warnings}

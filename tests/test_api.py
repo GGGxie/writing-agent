@@ -1,10 +1,11 @@
 import asyncio
+import threading
 
 import httpx
 
 from writing_agent.api.main import create_app
 from writing_agent.config import ROOT_DIR, get_settings
-from writing_agent.models import FormSuggestionResponse
+from writing_agent.models import FormSuggestionResponse, GenerateResponse
 
 MODEL_ARTICLE = """# 工具发布：解决重复整理素材的问题
 
@@ -30,7 +31,7 @@ def _prepare(tmp_path, monkeypatch):
     get_settings.cache_clear()
     monkeypatch.setattr(
         "writing_agent.graph.nodes.draft_wechat.generate_text_strict",
-        lambda _prompt: MODEL_ARTICLE,
+        lambda _prompt, **_kwargs: MODEL_ARTICLE,
     )
     return create_app()
 
@@ -91,6 +92,164 @@ def test_generate_endpoint_returns_research_when_evidence_missing(tmp_path, monk
     assert data["status"] == "researching"
     assert data["drafts"] == []
     assert data["evidence_gate"]["can_draft"] is False
+
+
+def test_stale_browser_generate_client_is_told_to_refresh(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    response = _request(
+        app,
+        "POST",
+        "/api/generate",
+        headers={"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors"},
+        json={"topic": "旧页面调用", "materials": []},
+    )
+
+    assert response.status_code == 409
+    assert "页面已更新，请刷新" in response.json()["detail"]
+
+
+def test_async_generate_job_returns_immediately_and_can_be_polled(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_pipeline(request):
+        started.set()
+        if not release.wait(timeout=2):
+            raise RuntimeError("test did not release the background job")
+        return GenerateResponse(
+            workflow_id=request.workflow_id,
+            run_id="run-async-001",
+            topic=request.topic,
+        )
+
+    monkeypatch.setattr("writing_agent.api.main.run_pipeline", slow_pipeline)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            submitted = await asyncio.wait_for(
+                client.post(
+                    "/api/generate/jobs",
+                    json={
+                        "workflow_id": "workflow-async-001",
+                        "topic": "异步生成测试",
+                        "materials": [{"kind": "text", "content": "测试素材"}],
+                    },
+                ),
+                timeout=0.5,
+            )
+            assert submitted.status_code == 202
+            assert submitted.headers["cache-control"] == "no-store"
+            accepted = submitted.json()
+            assert accepted["status"] == "queued"
+            assert accepted["poll_url"].endswith(accepted["job_id"])
+
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert started.is_set()
+            running = await client.get(accepted["poll_url"])
+            assert running.status_code == 200
+            assert running.json()["status"] == "running"
+            assert (await client.get("/health")).status_code == 200
+
+            release.set()
+            for _ in range(50):
+                completed = await client.get(accepted["poll_url"])
+                if completed.json()["status"] == "succeeded":
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("background job did not finish")
+
+            data = completed.json()
+            assert data["result"]["workflow_id"] == "workflow-async-001"
+            assert data["result"]["run_id"] == "run-async-001"
+            assert data["error"] is None
+
+    try:
+        asyncio.run(run())
+    finally:
+        release.set()
+        app.state.operations.shutdown(wait=True)
+
+
+def test_async_generate_job_exposes_failure(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+
+    def fail_pipeline(_request):
+        raise RuntimeError("模型服务暂时不可用")
+
+    monkeypatch.setattr("writing_agent.api.main.run_pipeline", fail_pipeline)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            submitted = await client.post(
+                "/api/generate/jobs",
+                json={"topic": "失败任务测试", "materials": []},
+            )
+            poll_url = submitted.json()["poll_url"]
+            for _ in range(50):
+                status = await client.get(poll_url)
+                if status.json()["status"] == "failed":
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("failed job did not reach a terminal state")
+
+            data = status.json()
+            assert data["result"] is None
+            assert data["error"] == "模型服务暂时不可用"
+
+    try:
+        asyncio.run(run())
+    finally:
+        app.state.operations.shutdown(wait=True)
+
+
+def test_async_generate_job_runs_real_pipeline(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            submitted = await client.post(
+                "/api/generate/jobs",
+                json={
+                    "workflow_id": "workflow-async-real-001",
+                    "topic": "异步生成真实流程",
+                    "content_type": "tool-release",
+                    "platforms": ["wechat"],
+                    "materials": [
+                        {
+                            "kind": "tool_record",
+                            "content": "工具实现与说明见 https://example.com/tool，需要保留人工审核。",
+                        }
+                    ],
+                },
+            )
+            assert submitted.status_code == 202
+            poll_url = submitted.json()["poll_url"]
+            for _ in range(200):
+                status = await client.get(poll_url)
+                if status.json()["status"] in {"succeeded", "failed"}:
+                    break
+                await asyncio.sleep(0.02)
+            else:
+                raise AssertionError("real pipeline job did not finish")
+
+            data = status.json()
+            assert data["status"] == "succeeded"
+            assert data["result"]["workflow_id"] == "workflow-async-real-001"
+            assert [draft["platform"] for draft in data["result"]["drafts"]] == ["wechat"]
+
+    try:
+        asyncio.run(run())
+    finally:
+        app.state.operations.shutdown(wait=True)
 
 
 def test_summarize_sources_endpoint(tmp_path, monkeypatch):
@@ -158,11 +317,93 @@ def test_summarize_sources_endpoint(tmp_path, monkeypatch):
     assert generate.json()["source_items"][0]["title"].startswith("标题:")
 
 
+def test_models_endpoint_returns_default_preset(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    response = _request(app, "GET", "/api/models")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["default_model_id"]
+    assert data["models"]
+    assert {model["id"] for model in data["models"]} == {data["default_model_id"]}
+
+
+def test_generate_rejects_unknown_model_id(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    response = _request(
+        app,
+        "POST",
+        "/api/generate",
+        json={
+            "topic": "测试未知模型",
+            "content_type": "opinion",
+            "model_id": "does-not-exist",
+            "materials": [{"kind": "text", "content": "素材"}],
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_generate_without_model_id_still_succeeds(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    response = _request(
+        app,
+        "POST",
+        "/api/generate",
+        json={
+            "workflow_id": "workflow-no-model-id",
+            "topic": "我的素材整理工具",
+            "content_type": "tool-release",
+            "platforms": ["wechat"],
+            "materials": [
+                {
+                    "kind": "tool_record",
+                    "content": "这个工具用于整理来源、生成研究材料和草稿，当前实现地址是 https://example.com/tool，并保留人工发布闸门。",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+
+
 def test_signals_endpoint_starts_empty(tmp_path, monkeypatch):
     app = _prepare(tmp_path, monkeypatch)
     response = _request(app, "GET", "/api/signals")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_relay_signal_endpoint_returns_flash_news_draft(tmp_path, monkeypatch):
+    app = _prepare(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "writing_agent.services.signal_relay.generate_text_strict",
+        lambda _prompt, **_kwargs: MODEL_ARTICLE,
+    )
+    response = _request(
+        app,
+        "POST",
+        "/api/relay_signal",
+        json={
+            "signal": {
+                "source_type": "rss",
+                "source_id": "feed-1",
+                "source_name": "Example Feed",
+                "title": "Example breaking news",
+                "content": "Something happened, according to https://example.com/news.",
+                "url": "https://example.com/news",
+                "discovered_at": "2026-09-18T00:00:00+08:00",
+                "source_tier": "B",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "draft"
+    assert [draft["platform"] for draft in data["drafts"]] == ["wechat"]
+    assert data["drafts"][0]["content_type"] == "flash-news"
+    assert data["source_items"][0]["url"] == "https://example.com/news"
+    assert data["source_items"][0]["source_tier"] == "B"
 
 
 def test_suggest_form_endpoint_returns_editable_fields(tmp_path, monkeypatch):
@@ -258,9 +499,10 @@ def test_homepage_is_public_and_actions_are_login_gated(tmp_path, monkeypatch):
     response = _request(app, "GET", "/")
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
     html = response.text
-    assert '<script type="module" src="/assets/app.js?v=20260910-1"></script>' in html
-    assert '<link rel="stylesheet" href="/assets/styles.css?v=20260910-1" />' in html
+    assert '<script type="module" src="/assets/app.js?v=20260923-1"></script>' in html
+    assert '<link rel="stylesheet" href="/assets/styles.css?v=20260917-3" />' in html
     html = "\n".join(
         (
             html,
@@ -301,6 +543,7 @@ def test_homepage_is_public_and_actions_are_login_gated(tmp_path, monkeypatch):
     assert "抓取失败：" in html
     assert "基于此线索创作" in html
     assert "signal-create-button" in html
+    assert "signal-relay-button" in html
     assert 'id="actionFeedback"' in html
     assert "runButtonAction" in html
     assert "已等待" in html
@@ -308,6 +551,12 @@ def test_homepage_is_public_and_actions_are_login_gated(tmp_path, monkeypatch):
     assert "setActionButtonsDisabled(true)" in html
     assert "sessionStorageKey" in html
     assert "data.source_summary_token" in html
+    assert 'callApi("/api/generate/jobs"' in html
+    assert 'callApi("/api/revise/jobs"' in html
+    assert "pollOperationJob" in html
+    assert "ignoreMissing: true" in html
+    assert "pollImmediately: true" in html
+    assert "writing-agent-active-job" in html
     assert "authFetch" in html
     assert 'credentials: "include"' in html
     assert response.headers["cross-origin-opener-policy"] == "same-origin-allow-popups"
@@ -332,6 +581,31 @@ def test_auth_fails_closed_when_google_is_not_configured(tmp_path, monkeypatch):
     ready = _request(app, "GET", "/ready")
     assert ready.status_code == 503
     assert ready.json()["checks"]["auth"] is False
+
+
+def test_generated_images_are_public_when_auth_is_required(tmp_path, monkeypatch):
+    image_path = tmp_path / "images" / "run-public" / "cover.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"test-image")
+    monkeypatch.setenv("EDITORIAL_WORKSPACE_DIR", str(tmp_path / "workspace"))
+    monkeypatch.setenv("IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
+    monkeypatch.setenv("COLLECTOR_DATABASE_PATH", str(tmp_path / "collector.sqlite3"))
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
+    monkeypatch.setenv("AUTH_ALLOWED_EMAILS", "gavinxie1219@gmail.com")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
+    get_settings.cache_clear()
+    app = create_app()
+
+    response = _request(
+        app,
+        "GET",
+        "/generated_images/run-public/cover.png",
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"test-image"
 
 
 def test_google_login_allows_only_whitelisted_email(tmp_path, monkeypatch):

@@ -154,6 +154,18 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
+.button-group.signals-group {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.group-divider {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .right {
   padding: 20px;
 }
@@ -174,6 +186,31 @@ button:disabled {
   color: #d8b4fe;
   background: var(--accent-soft);
   border: 1px solid rgba(216, 180, 254, 0.18);
+}
+
+.view-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.view-tab {
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.view-tab[aria-selected="true"] {
+  color: #d8b4fe;
+  background: var(--accent-soft);
+  border-color: rgba(216, 180, 254, 0.18);
 }
 
 .portfolio-intro {

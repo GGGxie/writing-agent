@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -22,8 +22,13 @@ from writing_agent.models import (
     GenerateRequest,
     GenerateResponse,
     GoogleCredentialRequest,
+    ModelCatalogResponse,
+    ModelOption,
+    OperationJobAccepted,
+    OperationJobResponse,
     ReviewRequest,
     SignalRecord,
+    SignalRelayRequest,
     SourceSummaryResponse,
 )
 from writing_agent.services.auth import (
@@ -40,7 +45,13 @@ from writing_agent.services.auth import (
 )
 from writing_agent.services.form_suggestion import suggest_form_fields
 from writing_agent.services.llm import text_model_ready
+from writing_agent.services.model_registry import (
+    ModelSelectionError,
+    discover_models,
+    resolve_selected_model_id,
+)
 from writing_agent.services.pipeline import run_pipeline, summarize_sources
+from writing_agent.services.signal_relay import relay_signal
 from writing_agent.services.source_snapshot import create_source_snapshot
 
 
@@ -50,6 +61,8 @@ def create_app() -> FastAPI:
     web_dir = ROOT_DIR / "web"
     generated_dir = settings.image_output_dir
     operations = OperationRunner(settings.max_concurrent_generations)
+    app.state.operations = operations
+    app.add_event_handler("shutdown", operations.shutdown)
 
     configured_origin = settings.web_origin.rstrip("/")
     allowed_origins = {configured_origin}
@@ -193,6 +206,17 @@ def create_app() -> FastAPI:
             "content": load_editorial_context("tech-ai-wechat"),
         }
 
+    @app.get("/api/models", response_model=ModelCatalogResponse)
+    async def list_models() -> ModelCatalogResponse:
+        catalog = discover_models()
+        return ModelCatalogResponse(
+            default_model_id=catalog.default_model_id,
+            models=[
+                ModelOption(id=option.id, name=option.id, available=option.available)
+                for option in catalog.options
+            ],
+        )
+
     @app.get("/api/signals", response_model=list[SignalRecord])
     async def list_signals(limit: int = 50) -> list[SignalRecord]:
         store = CollectorStore()
@@ -224,16 +248,77 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def index() -> HTMLResponse:
-        return HTMLResponse((web_dir / "index.html").read_text(encoding="utf-8"))
+        return HTMLResponse(
+            (web_dir / "index.html").read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def ensure_model_selectable(model_id: str | None) -> None:
+        try:
+            resolve_selected_model_id(model_id)
+        except ModelSelectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def operation_owner(request: Request) -> str:
+        user = getattr(request.state, "user", None)
+        if not isinstance(user, dict):
+            return "anonymous"
+        subject = str(user.get("sub") or "").strip()
+        email = str(user.get("email") or "").strip().lower()
+        return f"{subject}:{email}"
+
+    def reject_stale_browser_client(request: Request) -> None:
+        if (
+            request.headers.get("sec-fetch-site") == "same-origin"
+            and request.headers.get("sec-fetch-mode") == "cors"
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="页面已更新，请刷新后重新提交；已生成的旧任务产物不会丢失",
+            )
+
+    @app.post(
+        "/api/generate/jobs",
+        response_model=OperationJobAccepted,
+        status_code=202,
+    )
+    async def submit_generate_job(
+        request: GenerateRequest,
+        http_request: Request,
+        response: Response,
+    ) -> OperationJobAccepted:
+        ensure_model_selectable(request.model_id)
+        response.headers["Cache-Control"] = "no-store"
+        return operations.submit_observed(
+            "generate",
+            request,
+            lambda: run_pipeline(request),
+            owner=operation_owner(http_request),
+        )
+
+    @app.get("/api/jobs/{job_id}", response_model=OperationJobResponse)
+    async def get_operation_job(
+        job_id: str,
+        http_request: Request,
+        response: Response,
+    ) -> OperationJobResponse:
+        response.headers["Cache-Control"] = "no-store"
+        job = operations.get_job(job_id, owner=operation_owner(http_request))
+        if job is None:
+            raise HTTPException(status_code=404, detail="任务不存在或已过期")
+        return job
 
     @app.post("/api/generate", response_model=GenerateResponse)
-    async def generate(request: GenerateRequest) -> GenerateResponse:
+    async def generate(request: GenerateRequest, http_request: Request) -> GenerateResponse:
+        reject_stale_browser_client(http_request)
+        ensure_model_selectable(request.model_id)
         return await operations.run_observed(
             "generate", request, lambda: run_pipeline(request)
         )
 
     @app.post("/api/suggest_form", response_model=FormSuggestionResponse)
     async def suggest_form(request: FormSuggestionRequest) -> FormSuggestionResponse:
+        ensure_model_selectable(request.model_id)
         try:
             result = await operations.run_observed(
                 "suggest_form",
@@ -253,6 +338,7 @@ def create_app() -> FastAPI:
     async def summarize_sources_api(
         request: GenerateRequest,
     ) -> SourceSummaryResponse:
+        ensure_model_selectable(request.model_id)
         result = await operations.run_observed(
             "summarize_sources",
             request,
@@ -265,12 +351,44 @@ def create_app() -> FastAPI:
         )
         return result
 
+    @app.post("/api/relay_signal", response_model=GenerateResponse)
+    async def relay_signal_api(request: SignalRelayRequest) -> GenerateResponse:
+        ensure_model_selectable(request.model_id)
+        try:
+            return await operations.run_observed(
+                "relay_signal", request, lambda: relay_signal(request)
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     @app.post("/api/revise", response_model=GenerateResponse)
-    async def revise(request: ReviewRequest) -> GenerateResponse:
+    async def revise(request: ReviewRequest, http_request: Request) -> GenerateResponse:
+        reject_stale_browser_client(http_request)
+        ensure_model_selectable(request.request.model_id)
         return await operations.run_observed(
             "revise",
             request.request,
             lambda: run_pipeline(request.request, feedback=request.feedback),
+            feedback_characters=len(request.feedback),
+        )
+
+    @app.post(
+        "/api/revise/jobs",
+        response_model=OperationJobAccepted,
+        status_code=202,
+    )
+    async def submit_revise_job(
+        request: ReviewRequest,
+        http_request: Request,
+        response: Response,
+    ) -> OperationJobAccepted:
+        ensure_model_selectable(request.request.model_id)
+        response.headers["Cache-Control"] = "no-store"
+        return operations.submit_observed(
+            "revise",
+            request.request,
+            lambda: run_pipeline(request.request, feedback=request.feedback),
+            owner=operation_owner(http_request),
             feedback_characters=len(request.feedback),
         )
 
