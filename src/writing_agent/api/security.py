@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from writing_agent.config import AppConfig
 from writing_agent.services.auth import SESSION_COOKIE, read_authenticated_user
 
+BODY_METHODS = {"POST", "PUT", "PATCH"}
+
 PUBLIC_PATHS = {
     "/",
     "/favicon.ico",
@@ -98,4 +100,42 @@ class SecurityBoundaryMiddleware:
                 return
             scope.setdefault("state", {})["user"] = user
 
+        if method in BODY_METHODS:
+            # Content-Length 只是声明；分块传输没有它。按实际收到的字节再限一次，
+            # 放在认证之后，未登录访问受保护路由时不必读取请求体。
+            buffered = await _read_body_within_limit(receive, self.settings.max_request_bytes)
+            if buffered is None:
+                await JSONResponse({"detail": "请求体过大"}, status_code=413)(
+                    scope, receive, send_with_security_headers
+                )
+                return
+            receive = _replay(buffered, receive)
+
         await self.app(scope, receive, send_with_security_headers)
+
+
+async def _read_body_within_limit(receive, limit: int) -> list[dict] | None:
+    """读完请求体并原样保留消息；超过上限时返回 None。内存占用不超过 limit。"""
+    messages: list[dict] = []
+    size = 0
+    while True:
+        message = await receive()
+        messages.append(message)
+        if message["type"] != "http.request":
+            return messages
+        size += len(message.get("body", b""))
+        if size > limit:
+            return None
+        if not message.get("more_body", False):
+            return messages
+
+
+def _replay(messages: list[dict], receive):
+    pending = list(messages)
+
+    async def replay_receive():
+        if pending:
+            return pending.pop(0)
+        return await receive()
+
+    return replay_receive
